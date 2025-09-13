@@ -3,10 +3,13 @@ import faiss
 import numpy as np
 import os
 from groq import Groq
+import csv
+from io import StringIO
 
 class VectorStore:
     def __init__(self, index_file="faiss_index.idx", texts_file="faiss_texts.npy", groq_api_key=None):
         self.client = Groq(api_key=groq_api_key or os.getenv("GROQ_API_KEY"))
+        self.model_name = os.getenv("GROQ_MODEL", "llama3-8b")  # default model
         self.index_file = index_file
         self.texts_file = texts_file
         self.index = None
@@ -24,18 +27,17 @@ class VectorStore:
                 self.texts = []
 
     def _get_embeddings(self, texts, batch_size=16):
-        """Generate embeddings in batches to improve speed."""
+        """Generate embeddings in batches."""
         embeddings = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            response = self.client.embeddings.create(input=batch, model="mixtral")  # or llama3-8b
+            response = self.client.embeddings.create(input=batch, model=self.model_name)
             embeddings.extend([d.embedding for d in response.data])
         return np.array(embeddings).astype('float32')
 
     def add_texts(self, texts):
         embeddings = self._get_embeddings(texts)
 
-        # Initialize index if first time
         if self.index is None:
             dim = embeddings.shape[1]
             self.index = faiss.IndexFlatL2(dim)
@@ -54,3 +56,16 @@ class VectorStore:
         q_emb = self._get_embeddings([query])
         scores, idxs = self.index.search(q_emb, k)
         return [self.texts[i] for i in idxs[0]]
+
+    def add_csv(self, csv_content):
+        """
+        Accept CSV content as bytes, convert to text chunks, and add to vector store.
+        """
+        text_rows = []
+        f = StringIO(csv_content.decode("utf-8"))
+        reader = csv.reader(f)
+        headers = next(reader, None)
+        for row in reader:
+            row_text = ", ".join(f"{h}: {v}" for h, v in zip(headers, row))
+            text_rows.append(row_text)
+        self.add_texts(text_rows)
