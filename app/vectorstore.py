@@ -1,39 +1,46 @@
-# vectorstore.py
+# vectorstore_hf.py
 import faiss
 import numpy as np
 import os
-from groq import Groq
 import csv
 from io import StringIO
+import requests
 
-class VectorStore:
-    def __init__(self, index_file="faiss_index.idx", texts_file="faiss_texts.npy", groq_api_key=None):
-        self.client = Groq(api_key=groq_api_key or os.getenv("GROQ_API_KEY"))
-        self.model_name = os.getenv("GROQ_MODEL", "llama3-8b")  # default model
+class VectorStoreHF:
+    def __init__(self, index_file="faiss_index.idx", texts_file="faiss_texts.npy", hf_token=None, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+        self.hf_token = hf_token or os.getenv("HF_TOKEN")
+        self.model_name = model_name
         self.index_file = index_file
         self.texts_file = texts_file
         self.index = None
         self.texts = []
 
-        # Load existing index safely
+        # Load existing index
         if os.path.exists(self.index_file) and os.path.getsize(self.index_file) > 0:
             try:
                 self.index = faiss.read_index(self.index_file)
                 if os.path.exists(self.texts_file) and os.path.getsize(self.texts_file) > 0:
                     self.texts = list(np.load(self.texts_file, allow_pickle=True))
             except Exception as e:
-                print(f"[VectorStore] Failed to load index: {e}")
+                print(f"[VectorStoreHF] Failed to load index: {e}")
                 self.index = None
                 self.texts = []
 
     def _get_embeddings(self, texts, batch_size=16):
-        """Generate embeddings in batches."""
+        """Generate embeddings using HF Inference API."""
+        headers = {"Authorization": f"Bearer {self.hf_token}"}
         embeddings = []
+
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            response = self.client.embeddings.create(input=batch, model=self.model_name)
-            embeddings.extend([d.embedding for d in response.data])
-        return np.array(embeddings).astype('float32')
+            payload = {"inputs": batch}
+            url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{self.model_name}"
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            batch_embeddings = response.json()  # list of lists
+            # Ensure numpy float32
+            embeddings.extend([np.array(e, dtype=np.float32) for e in batch_embeddings])
+        return np.array(embeddings).astype("float32")
 
     def add_texts(self, texts):
         embeddings = self._get_embeddings(texts)
@@ -58,9 +65,7 @@ class VectorStore:
         return [self.texts[i] for i in idxs[0]]
 
     def add_csv(self, csv_content):
-        """
-        Accept CSV content as bytes, convert to text chunks, and add to vector store.
-        """
+        """Convert CSV content to text chunks and add to vector store."""
         text_rows = []
         f = StringIO(csv_content.decode("utf-8"))
         reader = csv.reader(f)
