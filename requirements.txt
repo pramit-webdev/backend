@@ -1,7 +1,6 @@
 fastapi==0.111.1
 uvicorn==0.23.2
 langgraph==0.2.13
-langchain==0.2.224
 faiss-cpu==1.7.4
 pdfplumber==0.10.0
 python-docx==0.8.12
