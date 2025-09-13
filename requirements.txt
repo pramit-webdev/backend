@@ -1,10 +1,10 @@
-fastapi==0.111.1
-uvicorn==0.23.2
-langgraph==0.2.13
-faiss-cpu==1.12.0       # updated version compatible with Python 3.13
-pdfplumber==0.10.0
-python-docx==0.8.12
-pandas==2.1.1
-requests==2.31.0
-python-multipart==0.0.6
-groq==1.5.0             # Groq embeddings SDK
+fastapi
+uvicorn
+langgraph
+faiss-cpu
+pdfplumber
+python-docx
+pandas
+requests
+python-multipart
+groq  # Groq embeddings SDK
