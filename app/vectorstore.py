@@ -9,21 +9,27 @@ class VectorStore:
         self.client = Groq(api_key=groq_api_key or os.getenv("GROQ_API_KEY"))
         self.index_file = index_file
         self.texts_file = texts_file
+        self.index = None
+        self.texts = []
 
-        # Load existing index if exists
-        if os.path.exists(self.index_file):
-            self.index = faiss.read_index(self.index_file)
-            self.texts = list(np.load(self.texts_file, allow_pickle=True))
-        else:
-            # We'll use IndexFlatL2 (for MVP) or IndexIVFFlat for larger datasets
-            self.index = None  # Will initialize after first embeddings
-            self.texts = []
+        # Load existing index safely
+        if os.path.exists(self.index_file) and os.path.getsize(self.index_file) > 0:
+            try:
+                self.index = faiss.read_index(self.index_file)
+                if os.path.exists(self.texts_file) and os.path.getsize(self.texts_file) > 0:
+                    self.texts = list(np.load(self.texts_file, allow_pickle=True))
+            except Exception as e:
+                print(f"[VectorStore] Failed to load index: {e}")
+                self.index = None
+                self.texts = []
 
-    def _get_embeddings(self, texts):
+    def _get_embeddings(self, texts, batch_size=16):
+        """Generate embeddings in batches to improve speed."""
         embeddings = []
-        for t in texts:
-            response = self.client.embeddings.create(input=t, model="mixtral")  # or llama3-8b
-            embeddings.append(response.data[0].embedding)
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            response = self.client.embeddings.create(input=batch, model="mixtral")  # or llama3-8b
+            embeddings.extend([d.embedding for d in response.data])
         return np.array(embeddings).astype('float32')
 
     def add_texts(self, texts):
