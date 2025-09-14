@@ -1,26 +1,36 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from app.ingest import process_file
 from app.graph import build_graph
 from app.vectorstore_openai import VectorStoreOpenAI
 from app.openai_llm import call_llm
+from typing import List
 
-app = FastAPI()
+app = FastAPI(title="DocuSync API", version="1.0")
+
 graph = build_graph()
-
-# OpenAI embedding-based vector store
 vector_store = VectorStoreOpenAI()
 
-@app.post("/process/")
-async def process_docs(marketing: UploadFile = File(...),
-                       sales: UploadFile = File(...),
-                       product: UploadFile = File(...)):
 
-    files = {"Marketing": marketing, "Sales": sales, "Product": product}
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint"""
+    return {"status": "ok", "message": "API is running"}
+
+
+@app.post("/process/")
+async def process_docs(files: List[UploadFile] = File(...)):
+    """
+    Accept multiple files and process them.
+    Flexible: works with any number of uploaded files.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+
     docs_chunks = {}
-    for dept, f in files.items():
+    for f in files:
         content = await f.read()
         chunks = process_file(content, f.filename)
-        docs_chunks[dept] = chunks
+        docs_chunks[f.filename] = chunks
         vector_store.add_texts(chunks)
 
     state = {"summaries": {}}
@@ -29,7 +39,7 @@ async def process_docs(marketing: UploadFile = File(...),
         out = graph.invoke({"dept": dept, "text": combined_text})
         state["summaries"][dept] = out["summary"]
 
-    # Run multi-step summarization & insights pipeline
+    # Multi-step summarization & insights pipeline
     comparison = graph.invoke({"summaries": state["summaries"]})
     state.update(comparison)
 
@@ -44,6 +54,12 @@ async def process_docs(marketing: UploadFile = File(...),
 
 @app.post("/query/")
 async def query_docs(question: str):
+    """
+    Search vector store and get answer from LLM
+    """
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
     results = vector_store.search(question, k=3)
     prompt = f"Answer the following question based on these documents:\n\n{results}\n\nQuestion: {question}"
     answer = call_llm(prompt)
