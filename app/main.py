@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from typing import List
+from pydantic import BaseModel
 
 from app.ingest import process_file
 from app.vectorstore_openai import VectorStoreOpenAI
@@ -12,12 +13,25 @@ app = FastAPI(title="DocuSync API", version="1.0")
 vector_store = VectorStoreOpenAI()
 
 
+# -------------------------------
+# Pydantic model for /query/ JSON
+# -------------------------------
+class QueryRequest(BaseModel):
+    question: str
+
+
+# -------------------------------
+# Health check
+# -------------------------------
 @app.get("/health")
 async def health_check():
     """Simple health check endpoint"""
     return {"status": "ok", "message": "API is running"}
 
 
+# -------------------------------
+# Process multiple files
+# -------------------------------
 @app.post("/process/")
 async def process_docs(files: List[UploadFile] = File(...)):
     """
@@ -69,11 +83,15 @@ async def process_docs(files: List[UploadFile] = File(...)):
     return state
 
 
+# -------------------------------
+# Query endpoint (JSON)
+# -------------------------------
 @app.post("/query/")
-async def query_docs(question: str):
+async def query_docs(request: QueryRequest):
     """
     Search vector store and get answer from LLM
     """
+    question = request.question
     if not question:
         raise HTTPException(status_code=400, detail="Question is required")
 
