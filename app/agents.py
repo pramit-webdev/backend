@@ -1,4 +1,4 @@
-from app.groq_llm import call_llm
+from app.openai_llm import call_llm
 
 def summarizer_agent(state):
     dept, text = state["dept"], state["text"]

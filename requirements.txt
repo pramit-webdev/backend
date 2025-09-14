@@ -7,4 +7,4 @@ python-docx
 pandas
 requests
 python-multipart
-groq  # Groq embeddings SDK
+openai

@@ -1,13 +1,14 @@
 from fastapi import FastAPI, UploadFile, File
 from app.ingest import process_file
 from app.graph import build_graph
-from app.vectorstore_hf import VectorStoreHF
-import os
+from app.vectorstore_openai import VectorStoreOpenAI
+from app.openai_llm import call_llm
 
 app = FastAPI()
 graph = build_graph()
 
-vector_store = VectorStoreHF(hf_token=os.getenv("HF_TOKEN"))
+# OpenAI embedding-based vector store
+vector_store = VectorStoreOpenAI()
 
 @app.post("/process/")
 async def process_docs(marketing: UploadFile = File(...),
@@ -28,6 +29,7 @@ async def process_docs(marketing: UploadFile = File(...),
         out = graph.invoke({"dept": dept, "text": combined_text})
         state["summaries"][dept] = out["summary"]
 
+    # Run multi-step summarization & insights pipeline
     comparison = graph.invoke({"summaries": state["summaries"]})
     state.update(comparison)
 
@@ -39,10 +41,10 @@ async def process_docs(marketing: UploadFile = File(...),
 
     return state
 
+
 @app.post("/query/")
 async def query_docs(question: str):
     results = vector_store.search(question, k=3)
     prompt = f"Answer the following question based on these documents:\n\n{results}\n\nQuestion: {question}"
-    from app.groq_llm import call_llm
     answer = call_llm(prompt)
     return {"answer": answer, "sources": results}
